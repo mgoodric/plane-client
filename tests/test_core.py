@@ -290,6 +290,35 @@ class CreateTest(unittest.TestCase):
         self.assertEqual(payload["name"], "t")
 
 
+class LatestCommentTest(unittest.TestCase):
+    def test_returns_newest_by_created_at_regardless_of_order(self) -> None:
+        # The endpoint's ordering is undocumented; latest_comment must pick the
+        # max created_at even if the list arrives oldest-first (so [-1] would be
+        # the newest by luck) or in an arbitrary order (so [-1] would be wrong).
+        page = {
+            "results": [
+                {"id": "c-old", "created_at": "2026-01-01T00:00:00Z"},
+                {"id": "c-new", "created_at": "2026-03-01T00:00:00Z"},
+                {"id": "c-mid", "created_at": "2026-02-01T00:00:00Z"},
+            ],
+            "next_page_results": False,
+            "next_cursor": "x",
+        }
+        client, fake = _client([(200, page)])
+        with mock.patch("plane_client.core.urllib.request.urlopen", side_effect=fake):
+            latest = client.latest_comment(ISSUE_UUID)
+        assert latest is not None
+        self.assertEqual(latest["id"], "c-new")
+        # The naive `[-1]` bug would have returned "c-mid" here.
+        self.assertNotEqual(latest["id"], page["results"][-1]["id"])
+
+    def test_returns_none_when_no_comments(self) -> None:
+        empty = {"results": [], "next_page_results": False}
+        client, fake = _client([(200, empty)])
+        with mock.patch("plane_client.core.urllib.request.urlopen", side_effect=fake):
+            self.assertIsNone(client.latest_comment(ISSUE_UUID))
+
+
 class UrlForTest(unittest.TestCase):
     def test_url_for(self) -> None:
         client, _ = _client([])

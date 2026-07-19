@@ -106,13 +106,16 @@ def _cmd_comments(args: argparse.Namespace, client: PlaneClient) -> int:
         json.dump(resp, sys.stdout, indent=2, sort_keys=True)
         print()
     elif isinstance(resp, list):
-        for c in resp:
+        # Plane returns comments newest-first; sort ascending by created_at so
+        # the human listing reads oldest→newest (the last line is the latest).
+        ordered = sorted(resp, key=lambda c: str(c.get("created_at") or ""))
+        for c in ordered:
             cid = c.get("id", "")
             created = c.get("created_at", "")
             actor_detail = c.get("actor_detail") or {}
             actor = actor_detail.get("display_name", "") if isinstance(actor_detail, dict) else ""
             print(f"{created}  {cid[:8]}  {actor}")
-        print(f"\n{len(resp)} comment(s)")
+        print(f"\n{len(ordered)} comment(s) (oldest first; newest is last)")
     else:
         cid = resp.get("id", "") if isinstance(resp, dict) else ""
         print(f"comment {cid}")

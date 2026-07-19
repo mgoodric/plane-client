@@ -40,7 +40,7 @@ from typing import Any, Callable, Dict, List, Optional
 from .core import PlaneAPIError, PlaneClient
 
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 # Advertised MCP protocol versions, most recent first. Clients negotiate against
@@ -111,6 +111,35 @@ def _tool_specs() -> Dict[str, Dict[str, Any]]:
                 "additionalProperties": False,
             },
         },
+        "plane_list_comments": {
+            "description": (
+                "List the comments on a Plane issue (the comment thread), "
+                "following cursor pagination automatically. Note: Plane returns "
+                "comments NEWEST-FIRST — do not assume oldest-first or take the "
+                "last element to get the latest; use `plane_latest_comment` for "
+                "the most recent one."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"ref": {"type": "string", "description": ref_desc}},
+                "required": ["ref"],
+                "additionalProperties": False,
+            },
+        },
+        "plane_latest_comment": {
+            "description": (
+                "Return the single newest comment on a Plane issue (the most "
+                "recent receipt), or null if it has none. Selects by `created_at` "
+                "rather than trusting server position, since Plane's newest-first "
+                "comment ordering is undocumented behaviour."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"ref": {"type": "string", "description": ref_desc}},
+                "required": ["ref"],
+                "additionalProperties": False,
+            },
+        },
         "plane_set_state": {
             "description": (
                 "Move a Plane issue to a different state. `state` accepts a "
@@ -171,6 +200,8 @@ TOOL_ORDER = (
     "plane_get",
     "plane_list",
     "plane_comment",
+    "plane_list_comments",
+    "plane_latest_comment",
     "plane_set_state",
     "plane_create",
 )
@@ -193,6 +224,8 @@ class PlaneMCPServer:
             "plane_get": self._plane_get,
             "plane_list": self._plane_list,
             "plane_comment": self._plane_comment,
+            "plane_list_comments": self._plane_list_comments,
+            "plane_latest_comment": self._plane_latest_comment,
             "plane_set_state": self._plane_set_state,
             "plane_create": self._plane_create,
         }
@@ -213,6 +246,12 @@ class PlaneMCPServer:
 
     def _plane_comment(self, args: Dict[str, Any]) -> Any:
         return self.client.comment(args["ref"], args["body"])
+
+    def _plane_list_comments(self, args: Dict[str, Any]) -> Any:
+        return self.client.list_comments(args["ref"])
+
+    def _plane_latest_comment(self, args: Dict[str, Any]) -> Any:
+        return self.client.latest_comment(args["ref"])
 
     def _plane_set_state(self, args: Dict[str, Any]) -> Any:
         return self.client.set_state(args["ref"], args["state"])

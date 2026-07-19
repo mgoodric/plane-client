@@ -2,7 +2,7 @@
 
 A small, zero-dependency Python client, CLI, and MCP server for the [Plane](https://plane.so) project-management API.
 
-Plane is a great issue tracker, and it's self-hostable — but its REST API has a handful of sharp edges that bite anyone talking to it with ad-hoc `curl` or `requests` code: control characters in JSON responses, a per-token rate limit, 400s from apostrophes, a pagination field that lies about whether there's a next page, and server-side filters that are silently ignored. `plane-client` encodes those workarounds once so you don't have to rediscover them.
+Plane is a great issue tracker, and it's self-hostable — but its REST API has a handful of sharp edges that bite anyone talking to it with ad-hoc `curl` or `requests` code: control characters in JSON responses, a per-token rate limit, 400s from apostrophes, a pagination field that lies about whether there's a next page, server-side filters that are silently ignored, comments that arrive newest-first, and auth-proxy HTML pages served with a `200`. `plane-client` encodes those workarounds once so you don't have to rediscover them.
 
 Everything here is standard library only — no `requests`, no third-party HTTP stack, nothing to audit but the code in this repo. Python 3.9+.
 
@@ -89,13 +89,15 @@ plane patch-comment PROJ-42 <comment-uuid> "edited in place"
 
 ## MCP server
 
-The package ships an [MCP](https://modelcontextprotocol.io) server (stdlib JSON-RPC over stdio) exposing five typed tools to MCP-capable AI clients such as Claude Code and Claude Desktop:
+The package ships an [MCP](https://modelcontextprotocol.io) server (stdlib JSON-RPC over stdio) exposing typed tools to MCP-capable AI clients such as Claude Code and Claude Desktop:
 
 | Tool | Does |
 | --- | --- |
 | `plane_get` | Fetch a single issue by ref |
 | `plane_list` | List issues, optionally filtered by state name |
 | `plane_comment` | Post a comment |
+| `plane_list_comments` | Read an issue's comment thread (newest-first) |
+| `plane_latest_comment` | Get the single newest comment on an issue |
 | `plane_set_state` | Move an issue to a named state |
 | `plane_create` | Create an issue |
 
@@ -142,6 +144,10 @@ This is the part worth reading. Each of these is a real behaviour of Plane's API
 - **Server-side filters that are silently ignored.** Some list filters — notably filtering the issues list by `state` — are accepted by the server and then ignored, returning the entire project instead of the subset you asked for. Rather than trust the server, the client passes the filter (in case Plane ever wires it up) *and* post-filters the results client-side, so `list(state="Todo")` returns exactly the issues in that state.
 
 - **Three reference flavours.** An issue can be addressed by its UUID, by its bare sequence number (`42`), or by the project identifier form (`PROJ-42`). All three resolve transparently. Because Plane also ignores a server-side `sequence_id` filter, resolving a bare number or `PROJ-N` ref means paginating the issue list and matching client-side; the client caches the resolution so you only pay for it once.
+
+- **Comments come back newest-first.** Plane's issue `/comments/` endpoint returns comments in *newest-first* order. Code that does `list_comments(ref)[-1]` to grab "the latest comment" (a receipt, a status heartbeat) silently gets the *oldest* one instead. Use `latest_comment(ref)`, which collects the thread and returns the comment with the maximum `created_at` rather than trusting the server's (undocumented) ordering; the CLI's `plane comments` listing is sorted oldest→newest so the newest is always the last line.
+
+- **An HTML page served with `200` in front of Plane.** When Plane sits behind an auth/reverse proxy (e.g. an OAuth2 proxy) or is briefly in maintenance, a request can come back as an HTML login/maintenance page carrying an HTTP `200` — not the JSON you asked for. Treating that as "0 results" is the dangerous failure: a poll loop sees an empty list and concludes there is no work. The client instead surfaces it as a hard `PlaneParseError` (a 2xx body that isn't JSON after stripping control chars), and the CLI exits non-zero, so a proxy/maintenance page never masquerades as an empty successful response.
 
 ## Example: a coordination loop on Plane
 

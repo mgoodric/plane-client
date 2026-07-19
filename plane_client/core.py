@@ -406,6 +406,14 @@ class PlaneClient:
         per_page: int = 100,
         max_pages: Optional[int] = None,
     ) -> Iterator[Dict[str, Any]]:
+        """Yield an issue's comments, following cursor pagination to exhaustion.
+
+        **Ordering:** Plane's ``/comments/`` endpoint returns comments
+        *newest-first*. Do not assume oldest-first, and do not take
+        ``list_comments(ref)[-1]`` to get the latest comment — that yields the
+        *oldest*. Use :meth:`latest_comment` (which selects by ``created_at``
+        rather than trusting server position) when you want the most recent one.
+        """
         uuid = self._uuid_for_ref(ref)
         base_path = self._project_path(f"/issues/{uuid}/comments/")
         query: Dict[str, Any] = {"per_page": per_page}
@@ -422,6 +430,24 @@ class PlaneClient:
             if not next_cursor:
                 return
             url, query = self._advance(base_path, next_cursor, per_page, None)
+
+    def latest_comment(self, ref: str) -> Optional[Dict[str, Any]]:
+        """Return the newest comment on an issue, or ``None`` if there are none.
+
+        Plane returns comments newest-first, but that ordering is undocumented
+        server behaviour — so rather than trust position (e.g. taking the first
+        or last element of :meth:`list_comments`), this collects every comment
+        and returns the one with the maximum ``created_at``. Comments missing a
+        ``created_at`` sort as oldest, so a well-formed comment always wins.
+        """
+        newest: Optional[Dict[str, Any]] = None
+        newest_key = ""
+        for comment in self.iter_comments(ref):
+            key = str(comment.get("created_at") or "")
+            if newest is None or key > newest_key:
+                newest = comment
+                newest_key = key
+        return newest
 
     def get_comment(self, ref: str, comment_id: str) -> Dict[str, Any]:
         """Fetch a single comment by its UUID."""

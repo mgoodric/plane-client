@@ -15,7 +15,7 @@ from .core import (
     strip_control_chars,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "PlaneClient",

@@ -191,30 +191,29 @@ while IFS= read -r issue_json; do
   pr_url=$(printf '%s' "$agent_html" | grep -oE "$scope_pr_re" | tail -1 || true)
 
   if [ -z "$pr_url" ]; then
-    # A task/deploy OE with no enumerated PR URL in AGENT receipts is
-    # suspicious: OE-277 gate requires an integration signal before Agent
-    # Done, so a missing PR URL means the gate was bypassed, the OE
-    # predates the gate, or the deliverable landed via a channel we don't
-    # trust (unenumerated repo, direct main push). Flag for triage.
-    reason="no enumerated PR URL in AGENT receipts — cannot verify integration"
-    pr_display="(no PR URL found)"
-  else
-    pr_json=$("$GH" pr view "$pr_url" --json state,mergeCommit,baseRefName 2>/dev/null) || {
-      log "OE-$seq: gh pr view failed for $pr_url — skipping this cycle"
-      skipped=$((skipped+1)); continue
-    }
-    pr_state=$(printf '%s' "$pr_json" | "$JQ" -r '.state // ""')
-    if [ "$pr_state" = "MERGED" ]; then
-      # Integration confirmed. Squash-merge safe: `gh pr view` returns
-      # state=MERGED regardless of whether the source branch was deleted
-      # after the merge (the branch-absent != stranded trap). Base branch
-      # is per-repo authoritative from GitHub (baseRefName), so hugo-main
-      # or master repos are handled without hard-coding "main".
-      ok=$((ok+1)); continue
-    fi
-    reason="PR $pr_url state=$pr_state (not MERGED) — work not integrated on baseRefName=$(printf '%s' "$pr_json" | "$JQ" -r '.baseRefName // "?"')"
-    pr_display="$pr_url"
+    # No PR URL in AGENT receipts. Absence of a PR is NOT evidence the work
+    # never integrated: many legitimate Dones are manual / config / pre-pipeline
+    # tasks that never opened a PR. Only a PR that EXISTS and is NOT merged
+    # proves non-integration (handled below); leave the OE in Agent Done.
+    # (2026-07-21 fix: the prior version flagged on ABSENCE of a PR URL, which
+    #  reopened 123 correctly-Done OEs into Agent Review. Never flag on absence.)
+    log "OE-$seq: no PR URL in AGENT receipts — cannot disprove integration; leaving Agent Done"
+    skipped=$((skipped+1)); continue
   fi
+
+  pr_json=$("$GH" pr view "$pr_url" --json state,mergeCommit,baseRefName 2>/dev/null) || {
+    log "OE-$seq: gh pr view failed for $pr_url — skipping this cycle"
+    skipped=$((skipped+1)); continue
+  }
+  pr_state=$(printf '%s' "$pr_json" | "$JQ" -r '.state // ""')
+  if [ "$pr_state" = "MERGED" ]; then
+    # Integration confirmed. `gh pr view` returns state=MERGED even after the
+    # source branch was deleted post-merge (branch-absent != stranded). Base
+    # branch is per-repo authoritative from GitHub (baseRefName).
+    ok=$((ok+1)); continue
+  fi
+  reason="PR $pr_url state=$pr_state (not MERGED) — work not integrated on baseRefName=$(printf '%s' "$pr_json" | "$JQ" -r '.baseRefName // "?"')"
+  pr_display="$pr_url"
 
   # Idempotency: has the reconciler already flagged this OE with a REOPEN
   # CANDIDATE receipt carrying our marker? If so, still allow state PATCH

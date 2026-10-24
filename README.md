@@ -1,5 +1,7 @@
 # plane-client
 
+> **Unmaintained:** Plane is no longer used.
+
 A small, zero-dependency Python client, CLI, and MCP server for the [Plane](https://plane.so) project-management API.
 
 Plane is a great issue tracker, and it's self-hostable — but its REST API has a handful of sharp edges that bite anyone talking to it with ad-hoc `curl` or `requests` code: control characters in JSON responses, a per-token rate limit, 400s from apostrophes, a pagination field that lies about whether there's a next page, server-side filters that are silently ignored, comments that arrive newest-first, and auth-proxy HTML pages served with a `200`. `plane-client` encodes those workarounds once so you don't have to rediscover them.
